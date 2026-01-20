@@ -1,15 +1,24 @@
-const GEMINI_API_KEY = 'AIzaSyBYE2ksfKdfGt9O2TbeUehTKf7tyuiVUA4';
+const GEMINI_API_KEY = '';
 let conversationContext = [];
 
 async function callGemini(userCommand, pageStructure) {
   const prompt = `You are an AI assistant helping visually impaired users navigate web pages. 
 
-Current page structure:
-${JSON.stringify(pageStructure, null, 2)}
+Page Information:
+Title: ${pageStructure.title}
+URL: ${pageStructure.url}
+
+Full HTML Content (for complete page analysis):
+${pageStructure.fullHTML}
+
+Extracted Text Content:
+${pageStructure.bodyText}
 
 User command: "${userCommand}"
 
 Previous context: ${conversationContext.slice(-3).join(' | ')}
+
+IMPORTANT: Analyze the full HTML content and text to provide accurate responses. Look at the actual page structure, content, and elements to give helpful navigation assistance.
 
 Respond with a JSON object containing:
 1. "action": one of ["click", "scroll", "fill", "read", "list"]
@@ -18,7 +27,11 @@ Respond with a JSON object containing:
 4. "text": text to read for read actions if needed
 5. "response": what to tell the user
 
-Keep responses concise and actionable.`;
+For "read" actions, provide comprehensive information about the page content based on your analysis.
+For "click" actions, provide specific CSS selectors to target the correct elements.
+For "list" actions, provide organized lists of available elements.
+
+Keep responses concise but thorough and actionable.`;
 
   try {
     console.log('Making Gemini API call...');
@@ -96,11 +109,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const structure = {
               title: document.title,
               url: window.location.href,
+              fullHTML: document.documentElement.outerHTML,
               headings: [],
               links: [],
               buttons: [],
               forms: [],
-              landmarks: []
+              landmarks: [],
+              bodyText: document.body.innerText || document.body.textContent || ''
             };
 
             document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading, index) => {
@@ -143,7 +158,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
             function: (action) => {
-              switch (action.type) {
+              switch (action.action) {
                 case 'click':
                   if (action.selector) {
                     const element = document.querySelector(action.selector);
@@ -152,7 +167,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   break;
                 
                 case 'scroll':
-                  if (action.direction === 'down') {
+                  if (action.selector) {
+                    const element = document.querySelector(action.selector);
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  } else if (action.direction === 'down') {
                     window.scrollBy(0, window.innerHeight * 0.8);
                   } else if (action.direction === 'up') {
                     window.scrollBy(0, -window.innerHeight * 0.8);
@@ -179,6 +199,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           rate: 1.0,
           pitch: 1.0,
           volume: 1.0
+        });
+
+        // Send AI response to popup
+        chrome.runtime.sendMessage({
+          type: 'AI_RESPONSE',
+          response: result.response
         });
 
       } catch (error) {

@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const listenBtn = document.getElementById('listen');
   const status = document.getElementById('status');
+  const aiText = document.getElementById('ai-text');
   let isListening = false;
 
   async function ensureContentScript(tabId) {
@@ -94,6 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
       status.textContent = `Error: ${message.error}`;
       isListening = false;
       listenBtn.textContent = 'Start Listening';
+    } else if (message.type === 'AI_RESPONSE') {
+      aiText.textContent = message.response;
     }
   });
 });

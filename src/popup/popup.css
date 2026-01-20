@@ -30,6 +30,25 @@ h2 {
   color: #333;
 }
 
+.ai-response-panel {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  min-height: 60px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+#ai-text {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #495057;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
 .test-buttons {
   display: flex;
   flex-direction: column;
