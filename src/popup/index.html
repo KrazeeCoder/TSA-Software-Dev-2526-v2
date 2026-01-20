@@ -10,16 +10,19 @@
   <button id="listen">Start Listening</button>
   <div id="status">Click to speak a command</div>
   
+  <h2>Type Command</h2>
+  <div class="input-section">
+    <input type="text" id="command-input" placeholder="Type your command here...">
+    <button id="send-command">Send</button>
+  </div>
+  
+  <div class="panel-section">
+    <button id="inject-panel">Add Panel to Page</button>
+  </div>
+  
   <h2>AI Response</h2>
   <div id="ai-response" class="ai-response-panel">
     <div id="ai-text">AI responses will appear here...</div>
-  </div>
-  
-  <h2>Test Commands</h2>
-  <div class="test-buttons">
-    <button class="test-btn" data-command="what does this page say?">What does this page say?</button>
-    <button class="test-btn" data-command="give a summary of this page">Give a summary</button>
-    <button class="test-btn" data-command="click the first link">Click first link</button>
   </div>
   
   <script type="module" src="popup.js"></script>
