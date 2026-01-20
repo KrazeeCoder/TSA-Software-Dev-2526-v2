@@ -23,3 +23,30 @@ button {
   text-align: center;
   color: #666;
 }
+
+h2 {
+  font-size: 14px;
+  margin: 20px 0 8px 0;
+  color: #333;
+}
+
+.test-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.test-btn {
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.test-btn:hover {
+  background-color: #e0e0e0;
+}

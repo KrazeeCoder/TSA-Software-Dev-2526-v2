@@ -1,7 +1,7 @@
-const OPENAI_API_KEY = 'imnotgivingyoumyapikey';
+const GEMINI_API_KEY = 'AIzaSyBYE2ksfKdfGt9O2TbeUehTKf7tyuiVUA4';
 let conversationContext = [];
 
-async function callOpenAI(userCommand, pageStructure) {
+async function callGemini(userCommand, pageStructure) {
   const prompt = `You are an AI assistant helping visually impaired users navigate web pages. 
 
 Current page structure:
@@ -21,47 +21,42 @@ Respond with a JSON object containing:
 Keep responses concise and actionable.`;
 
   try {
-    console.log('Making OpenAI API call...');
+    console.log('Making Gemini API call...');
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 100,
-        temperature: 0.5
+        contents: [
+          {
+            parts: [
+              {
+                text: prompt
+              }
+            ]
+          }
+        ]
       })
     });
 
-    console.log('OpenAI response status:', response.status);
+    console.log('Gemini response status:', response.status);
     
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('OpenAI API error response:', errorData);
-      
-      if (errorData.includes('insufficient_quota') || errorData.includes('quota')) {
-        return {
-          action: 'read',
-          text: 'OpenAI API quota exceeded. Please add credits to your account.',
-          response: 'OpenAI API quota exceeded. Please add credits to your account.'
-        };
-      }
-      
+      console.error('Gemini API error response:', errorData);
       throw new Error(`API Error: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
-    console.log('OpenAI response data:', data);
+    console.log('Gemini response data:', data);
     
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts || !data.candidates[0].content.parts[0]) {
       throw new Error('Invalid API response format');
     }
     
-    const aiResponse = data.choices[0].message.content;
+    const aiResponse = data.candidates[0].content.parts[0].text;
     console.log('AI response:', aiResponse);
     
     try {
@@ -75,15 +70,7 @@ Keep responses concise and actionable.`;
       };
     }
   } catch (error) {
-    console.error('OpenAI API error:', error);
-    
-    if (error.message.includes('quota')) {
-      return {
-        action: 'read',
-        text: 'OpenAI API quota exceeded. Please add credits to your account.',
-        response: 'OpenAI API quota exceeded. Please add credits to your account.'
-      };
-    }
+    console.error('Gemini API error:', error);
     
     return {
       action: 'read',
@@ -148,7 +135,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
 
         console.log('Page structure extracted:', pageStructure[0].result);
-        const result = await callOpenAI(message.command, pageStructure[0].result);
+        const result = await callGemini(message.command, pageStructure[0].result);
         console.log('AI result:', result);
         
         if (result.action !== 'read' && result.action !== 'list') {

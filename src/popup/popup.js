@@ -21,6 +21,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function sendTestCommand(command) {
+    status.textContent = `Testing: "${command}"`;
+    
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.runtime.sendMessage({
+          type: 'VOICE_COMMAND',
+          command: command
+        });
+      }
+    });
+  }
+
+  // Test button event listeners
+  document.querySelectorAll('.test-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const command = btn.getAttribute('data-command');
+      sendTestCommand(command);
+    });
+  });
+
   listenBtn.addEventListener('click', async () => {
     if (isListening) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
