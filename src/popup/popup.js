@@ -1,8 +1,10 @@
 // Voice Navigator Popup Script
+// This runs when you click the extension icon in the toolbar
 
 (function() {
   'use strict';
 
+  // Get all the UI elements we need to work with
   const listenBtn = document.getElementById('listen-btn');
   const statusEl = document.getElementById('status');
   const responseEl = document.getElementById('response');
@@ -10,23 +12,28 @@
   const sendBtn = document.getElementById('send-btn');
   const continuousToggle = document.getElementById('continuous-toggle');
 
+  // Keep track of whether we're currently listening
   let isListening = false;
 
+  // Load the last response so user can see what happened last time
   chrome.storage.local.get(['lastResponse'], function(result) {
     if (result.lastResponse) {
       responseEl.textContent = result.lastResponse;
     }
   });
 
+  // Helper functions to update the UI
   function setStatus(text) {
     statusEl.textContent = text;
   }
 
   function setResponse(text) {
     responseEl.textContent = text;
+    // Save the response so we can show it next time
     chrome.storage.local.set({ lastResponse: text });
   }
 
+  // Update the listen button based on whether we're listening
   function updateListenButton(listening) {
     isListening = listening;
     if (listening) {
@@ -40,6 +47,7 @@
     }
   }
 
+  // Send a voice command to the background script
   function sendCommand(command) {
     if (!command.trim()) return;
     setStatus('Processing...');
@@ -49,13 +57,16 @@
     });
   }
 
+  // Start or stop listening for voice commands
   async function toggleListening() {
     try {
       if (isListening) {
+        // Stop listening
         await chrome.runtime.sendMessage({ type: 'STOP_LISTENING' });
         updateListenButton(false);
         setStatus('Ready to assist');
       } else {
+        // Start listening
         const continuous = !!continuousToggle?.checked;
         await chrome.runtime.sendMessage({ type: 'START_LISTENING', continuous });
         updateListenButton(true);
@@ -68,13 +79,18 @@
     }
   }
 
+  // Set up all the event listeners
+  
+  // Click the big listen button to toggle listening
   listenBtn.addEventListener('click', toggleListening);
 
+  // Click send button or press Enter to send text command
   sendBtn.addEventListener('click', function() {
     sendCommand(commandInput.value);
     commandInput.value = '';
   });
 
+  // Allow sending commands with Enter key
   commandInput.addEventListener('keypress', function(e) {
     if (e.key === 'Enter') {
       sendCommand(commandInput.value);
@@ -82,12 +98,15 @@
     }
   });
 
+  // Listen for messages from the background script
   chrome.runtime.onMessage.addListener(function(message) {
     if (message.type === 'AI_RESPONSE') {
+      // Show what the AI said
       setResponse(message.response);
       setStatus('Ready to assist');
       if (!continuousToggle?.checked) updateListenButton(false);
     } else if (message.type === 'VOICE_STATUS') {
+      // Update based on what's happening with voice recognition
       if (message.status === 'listening') {
         updateListenButton(true);
       } else if (message.status === 'stopped') {
@@ -96,6 +115,7 @@
         setStatus('You said: "' + (message.transcript || '') + '"');
       }
     } else if (message.type === 'VOICE_ERROR') {
+      // Show friendly error messages
       const errors = {
         'not-allowed': 'Microphone access denied for this site.',
         'audio-capture': 'No microphone found.',
@@ -110,6 +130,7 @@
     }
   });
 
+  // Check if we're already listening when the popup opens
   chrome.runtime.sendMessage({ type: 'GET_LISTENING_STATUS' }, function(response) {
     if (response?.status === 'listening') {
       updateListenButton(true);
@@ -117,5 +138,6 @@
     }
   });
 
+  // Focus on the input field so user can start typing right away
   commandInput.focus();
 })();

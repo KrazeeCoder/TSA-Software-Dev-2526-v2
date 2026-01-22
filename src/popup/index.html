@@ -7,24 +7,29 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
+  <!-- Main container for the popup interface -->
   <main role="main">
     <h1>Voice Navigator</h1>
     
+    <!-- Status message shows what's currently happening -->
     <p id="status" role="status" aria-live="polite">
       Ready to assist
     </p>
 
+    <!-- Action buttons area -->
     <div class="actions">
       <button id="listen-btn" aria-label="Start voice input">
         🎤 Start Listening
       </button>
     </div>
 
+    <!-- Options section -->
     <div class="option">
       <input type="checkbox" id="continuous-toggle">
       <label for="continuous-toggle">Continuous conversation</label>
     </div>
 
+    <!-- Text input for typing commands -->
     <div class="text-input">
       <label for="command-input" class="sr-only">Type a command</label>
       <input 
@@ -39,6 +44,7 @@
     </div>
     <p id="input-hint" class="hint">Press Enter to send</p>
 
+    <!-- Response display area -->
     <div id="response-area" role="region" aria-label="AI Response">
       <h2>Response</h2>
       <div id="response" aria-live="polite">
@@ -46,6 +52,7 @@
       </div>
     </div>
 
+    <!-- Help text -->
     <p class="hint">Microphone permission is required per site.</p>
   </main>
 

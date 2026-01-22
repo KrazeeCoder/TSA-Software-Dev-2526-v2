@@ -1,0 +1,36 @@
+<!-- Voice Navigator HTML Template-->
+
+<!-- Main container -->
+<div id="voice-navigator-panel" role="region" aria-label="Voice Navigator assistant">
+  
+  <!-- Show/hide the panel -->
+  <button id="vn-toggle" class="vn-toggle" aria-expanded="true" aria-controls="vn-content">
+    Voice Navigator
+    <span class="vn-toggle-icon">▼</span>
+  </button>
+  
+  <!-- Main content area -->
+  <div id="vn-content" class="vn-content">
+    
+    <!-- Start/stop listening button -->
+    <button id="vn-btn" class="vn-btn" aria-label="Start voice input">
+      Listen
+    </button>
+    
+    <!-- Cntinuous conversation checkbox -->
+    <div class="vn-option">
+      <input type="checkbox" id="vn-continuous" class="vn-checkbox">
+      <label for="vn-continuous" class="vn-label">Continuous conversation</label>
+    </div>
+    
+    <!-- Status text area -->
+    <div id="vn-status" class="vn-status" role="status" aria-live="polite">
+      Ready. Click Listen or press Alt+V.
+    </div>
+    
+    <!-- Close button -->
+    <button id="vn-close" class="vn-close" aria-label="Close Voice Navigator">
+      Close
+    </button>
+  </div>
+</div>

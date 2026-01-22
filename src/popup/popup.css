@@ -1,11 +1,14 @@
-/* Voice Navigator Popup - Accessible Design */
+/* Voice Navigator Popup - Accessible Design
+ * Makes the popup window look good and work well for everyone */
 
+/* Reset default browser styles */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+/* Main popup window styling */
 body {
   width: 320px;
   min-height: 400px;
@@ -17,7 +20,7 @@ body {
   color: #fff;
 }
 
-/* Screen reader only */
+/* Hide things visually but keep them for screen readers */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -29,6 +32,7 @@ body {
   border: 0;
 }
 
+/* Main title */
 h1 {
   font-size: 22px;
   font-weight: 700;
@@ -36,6 +40,7 @@ h1 {
   color: #fff;
 }
 
+/* Section headers */
 h2 {
   font-size: 14px;
   font-weight: 600;
@@ -45,6 +50,7 @@ h2 {
   margin-bottom: 8px;
 }
 
+/* Status message area */
 #status {
   background: #222;
   padding: 12px;
@@ -53,10 +59,12 @@ h2 {
   font-size: 15px;
 }
 
+/* Container for action buttons */
 .actions {
   margin-bottom: 16px;
 }
 
+/* Main listen button */
 #listen-btn {
   display: block;
   width: 100%;
@@ -77,14 +85,17 @@ h2 {
 }
 
 #listen-btn:focus {
+  /* Yellow outline for keyboard users */
   outline: 4px solid #ffff00;
   outline-offset: 2px;
 }
 
+/* When we're actively listening */
 #listen-btn.listening {
   background: #cc0000;
 }
 
+/* Container for options like checkboxes */
 .option {
   display: flex;
   align-items: center;
@@ -96,6 +107,7 @@ h2 {
   border: 2px solid #333;
 }
 
+/* Style checkboxes nicely */
 .option input[type="checkbox"] {
   width: 20px;
   height: 20px;
@@ -109,12 +121,14 @@ h2 {
   color: #fff;
 }
 
+/* Text input area for typing commands */
 .text-input {
   display: flex;
   gap: 8px;
   margin-bottom: 6px;
 }
 
+/* The actual text input field */
 #command-input {
   flex: 1;
   padding: 12px;
@@ -130,10 +144,12 @@ h2 {
   outline: none;
 }
 
+/* Placeholder text styling */
 #command-input::placeholder {
   color: #888;
 }
 
+/* Send button for text commands */
 #send-btn {
   padding: 12px 16px;
   background: #333;
@@ -152,20 +168,24 @@ h2 {
 }
 
 #send-btn:focus {
+  /* Yellow outline for keyboard users */
   outline: 4px solid #ffff00;
   outline-offset: 2px;
 }
 
+/* Little hint text */
 .hint {
   font-size: 12px;
   color: #666;
   margin-bottom: 16px;
 }
 
+/* Response display area */
 #response-area {
   margin-bottom: 16px;
 }
 
+/* Where we show what the AI said */
 #response {
   background: #111;
   border: 2px solid #333;
@@ -178,14 +198,13 @@ h2 {
   line-height: 1.5;
 }
 
-
-/* Focus visible for keyboard navigation */
+/* Make focus visible for keyboard navigation */
 :focus-visible {
   outline: 4px solid #ffff00;
   outline-offset: 2px;
 }
 
-/* Reduced motion preference */
+/* Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

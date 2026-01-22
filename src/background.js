@@ -1,15 +1,18 @@
-// Background service worker
-// Handles: OpenAI API, page actions, and popup status
+// Background service scrupt
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
+
 let conversationHistory = [];
+
 let listeningState = 'stopped';
 
+// Send updates to the popup so it knows what's happening
 function broadcastToPopup(payload) {
   chrome.runtime.sendMessage(payload).catch(() => {});
 }
 
 async function callOpenAI(userCommand, pageStructure) {
+  // Behavior of OpenAI
   const systemPrompt = `You are a friendly, conversational voice assistant helping users navigate web pages. You speak naturally like a helpful friend, not a robot.
 
 Your personality:
@@ -35,6 +38,7 @@ Examples of good conversational responses:
 - "Hmm, I couldn't find a search button, but I did see a menu icon you might want to try."
 - "Great question! This page is about..."`;
 
+  // Give OpenAI all the info about the current page so it can help
   const userPrompt = `Current page: "${pageStructure.title}"
 URL: ${pageStructure.url}
 
@@ -53,6 +57,7 @@ Remember: Respond with valid JSON only. Make the "response" field sound natural 
   try {
     console.log('Calling OpenAI...');
     
+    // Checking for API key
     if (!OPENAI_API_KEY) {
       return {
         action: 'none',
@@ -60,6 +65,7 @@ Remember: Respond with valid JSON only. Make the "response" field sound natural 
       };
     }
 
+    // Make API call to OpenAI
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -79,6 +85,7 @@ Remember: Respond with valid JSON only. Make the "response" field sound natural 
       })
     });
 
+    // Check if the API call worked
     if (!response.ok) {
       const errorText = await response.text();
       console.error('OpenAI error:', errorText);
@@ -90,15 +97,16 @@ Remember: Respond with valid JSON only. Make the "response" field sound natural 
     
     console.log('AI response:', aiText);
 
-    // Save to conversation history
+    // Save this conversation so we can remember it later
     conversationHistory.push({ role: 'user', content: userCommand });
     conversationHistory.push({ role: 'assistant', content: aiText });
     
-    // Keep history manageable
+    // Keep the conversation short
     if (conversationHistory.length > 10) {
       conversationHistory = conversationHistory.slice(-6);
     }
 
+    // Try to parse the response as JSON - if it fails, just use the text
     try {
       return JSON.parse(aiText);
     } catch {
@@ -110,6 +118,7 @@ Remember: Respond with valid JSON only. Make the "response" field sound natural 
     }
   } catch (error) {
     console.error('OpenAI error:', error);
+    // Something went wrong, let user know
     return {
       action: 'none',
       response: "Sorry, I ran into a problem connecting to my brain. Can you try again?"
@@ -117,6 +126,7 @@ Remember: Respond with valid JSON only. Make the "response" field sound natural 
   }
 }
 
+// Use text-to-speech to read the response out loud
 function speak(text) {
   if (!text) return;
   chrome.tts.speak(text, {
@@ -131,12 +141,14 @@ async function executeAction(tabId, action) {
     return;
   }
 
+  // Inject script into page to perform action
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
       function: (actionData) => {
         switch (actionData.action) {
           case 'click':
+            // Try to click by CSS selector first
             if (actionData.selector) {
               const elements = document.querySelectorAll(actionData.selector);
               const el = elements[actionData.index || 0];
@@ -158,6 +170,7 @@ async function executeAction(tabId, action) {
             break;
 
           case 'scroll':
+            // Scroll the page up or down
             if (actionData.direction === 'down') {
               window.scrollBy({ top: window.innerHeight * 0.75, behavior: 'smooth' });
             } else if (actionData.direction === 'up') {
@@ -166,10 +179,12 @@ async function executeAction(tabId, action) {
             break;
 
           case 'fill':
+            // Type text into a form field
             if (actionData.selector && actionData.value) {
               const el = document.querySelector(actionData.selector);
               if (el) {
                 el.value = actionData.value;
+                // Let the page know we changed something
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
               }
@@ -177,6 +192,7 @@ async function executeAction(tabId, action) {
             break;
 
           case 'navigate':
+            // Go to a different page or back/forward in history
             if (actionData.value === 'back') {
               window.history.back();
             } else if (actionData.value === 'forward') {
@@ -194,6 +210,7 @@ async function executeAction(tabId, action) {
   }
 }
 
+// Get information about the current page so OpenAI knows what's there
 async function getPageStructure(tabId) {
   try {
     const results = await chrome.scripting.executeScript({
@@ -202,35 +219,41 @@ async function getPageStructure(tabId) {
         return {
           title: document.title,
           url: window.location.href,
+          // Get the main headings on the page
           headings: [...document.querySelectorAll('h1,h2,h3,h4')].slice(0, 20).map((h, i) => ({
             index: i,
             level: parseInt(h.tagName[1]),
             text: h.textContent.trim().slice(0, 100)
           })),
+          // Get all the links on the page
           links: [...document.querySelectorAll('a[href]')].filter(a => a.textContent.trim()).slice(0, 30).map((a, i) => ({
             index: i,
             text: a.textContent.trim().slice(0, 60),
             href: a.href
           })),
+          // Get all the buttons on the page
           buttons: [...document.querySelectorAll('button, [role="button"], input[type="submit"]')].slice(0, 15).map((b, i) => ({
             index: i,
             text: (b.textContent.trim() || b.value || b.getAttribute('aria-label') || '').slice(0, 50)
           })),
+          // Get some of the page text
           bodyText: document.body.innerText?.slice(0, 4000) || ''
         };
       }
     });
     return results[0]?.result || {};
   } catch {
+    // If something goes wrong, return empty data
     return { title: '', url: '', headings: [], links: [], buttons: [], bodyText: '' };
   }
 }
 
-// Main message handler
+// Messages from other parts of the extension
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message?.type) return;
   console.log('Background received:', message.type);
 
+  //Voice command handler
   if (message.type === 'VOICE_COMMAND') {
     (async () => {
       try {
@@ -240,6 +263,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
+        // Let the popup know its processing
         broadcastToPopup({
           type: 'VOICE_STATUS',
           status: 'processing',
@@ -266,18 +290,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Update listening status
   if (message.type === 'VOICE_STATUS') {
     listeningState = message.status;
     broadcastToPopup(message);
     return true;
   }
 
+  // Handle voice errors
   if (message.type === 'VOICE_ERROR') {
     listeningState = 'stopped';
     broadcastToPopup(message);
     return true;
   }
 
+  // Start listening for voice commands
   if (message.type === 'START_LISTENING') {
     (async () => {
       try {
@@ -288,6 +315,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
+        // Tell content script to start listening
         await chrome.tabs.sendMessage(tab.id, {
           type: 'START_LISTENING',
           continuous: !!message.continuous
@@ -304,11 +332,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Stop listening for voice commands
   if (message.type === 'STOP_LISTENING') {
     (async () => {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id) {
+          // Tell the content script to stop listening
           await chrome.tabs.sendMessage(tab.id, { type: 'STOP_LISTENING' });
         }
       } catch (err) {
@@ -331,4 +361,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// Let devs know when the background script is ready
 console.log('Background loaded. API key:', OPENAI_API_KEY ? 'configured' : 'missing');
