@@ -85,6 +85,30 @@ h2 {
   background: #cc0000;
 }
 
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px;
+  background: #111;
+  border-radius: 6px;
+  border: 2px solid #333;
+}
+
+.option input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #00aa00;
+}
+
+.option label {
+  cursor: pointer;
+  font-size: 15px;
+  color: #fff;
+}
+
 .text-input {
   display: flex;
   gap: 8px;
@@ -154,19 +178,6 @@ h2 {
   line-height: 1.5;
 }
 
-.shortcut {
-  font-size: 13px;
-  color: #888;
-  text-align: center;
-}
-
-kbd {
-  background: #333;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
-}
 
 /* Focus visible for keyboard navigation */
 :focus-visible {

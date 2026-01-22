@@ -8,10 +8,10 @@
   const responseEl = document.getElementById('response');
   const commandInput = document.getElementById('command-input');
   const sendBtn = document.getElementById('send-btn');
+  const continuousToggle = document.getElementById('continuous-toggle');
 
   let isListening = false;
 
-  // Load saved response on open
   chrome.storage.local.get(['lastResponse'], function(result) {
     if (result.lastResponse) {
       responseEl.textContent = result.lastResponse;
@@ -42,7 +42,6 @@
 
   function sendCommand(command) {
     if (!command.trim()) return;
-    
     setStatus('Processing...');
     chrome.runtime.sendMessage({
       type: 'VOICE_COMMAND',
@@ -50,38 +49,17 @@
     });
   }
 
-  // Start/stop listening via content script
   async function toggleListening() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    if (!tab) {
-      setStatus('No active tab found');
-      return;
-    }
-
-    // Check if we can access the tab
-    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
-      setStatus('Cannot run on browser pages');
-      return;
-    }
-
     try {
       if (isListening) {
-        await chrome.tabs.sendMessage(tab.id, { type: 'STOP_LISTENING' });
+        await chrome.runtime.sendMessage({ type: 'STOP_LISTENING' });
         updateListenButton(false);
         setStatus('Ready to assist');
       } else {
-        // Inject content script if needed and start listening
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => {
-            if (window.__voiceNavigatorInitialized && window.toggleListening) {
-              window.toggleListening();
-            }
-          }
-        });
+        const continuous = !!continuousToggle?.checked;
+        await chrome.runtime.sendMessage({ type: 'START_LISTENING', continuous });
         updateListenButton(true);
-        setStatus('Listening...');
+        setStatus(continuous ? 'Listening (continuous)...' : 'Listening...');
       }
     } catch (err) {
       console.error('Error:', err);
@@ -90,7 +68,6 @@
     }
   }
 
-  // Event listeners
   listenBtn.addEventListener('click', toggleListening);
 
   sendBtn.addEventListener('click', function() {
@@ -105,22 +82,40 @@
     }
   });
 
-  // Listen for messages from background
   chrome.runtime.onMessage.addListener(function(message) {
     if (message.type === 'AI_RESPONSE') {
       setResponse(message.response);
       setStatus('Ready to assist');
-      updateListenButton(false);
-    } else if (message.type === 'VOICE_RESULT') {
-      setStatus('You said: "' + message.transcript + '"');
-      updateListenButton(false);
+      if (!continuousToggle?.checked) updateListenButton(false);
+    } else if (message.type === 'VOICE_STATUS') {
+      if (message.status === 'listening') {
+        updateListenButton(true);
+      } else if (message.status === 'stopped') {
+        updateListenButton(false);
+      } else if (message.status === 'processing') {
+        setStatus('You said: "' + (message.transcript || '') + '"');
+      }
     } else if (message.type === 'VOICE_ERROR') {
-      setStatus('Error: ' + message.error);
+      const errors = {
+        'not-allowed': 'Microphone access denied for this site.',
+        'audio-capture': 'No microphone found.',
+        'no-speech': 'No speech detected.',
+        'speech-not-supported': 'Speech recognition not supported.',
+        'page-not-supported': 'This page does not allow mic access.',
+        'no-tab': 'No active tab found.',
+        'processing-failed': 'Error processing your request.'
+      };
+      setStatus(errors[message.error] || ('Error: ' + message.error));
       updateListenButton(false);
     }
   });
 
-  // Focus input on open
-  commandInput.focus();
+  chrome.runtime.sendMessage({ type: 'GET_LISTENING_STATUS' }, function(response) {
+    if (response?.status === 'listening') {
+      updateListenButton(true);
+      setStatus(continuousToggle?.checked ? 'Listening (continuous)...' : 'Listening...');
+    }
+  });
 
+  commandInput.focus();
 })();

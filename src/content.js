@@ -1,4 +1,124 @@
 // Voice Navigator - Content Script
+// Handles speech recognition on the current website (per-site permission)
+
+(function() {
+  'use strict';
+
+  if (window.__voiceNavigatorContent) return;
+  window.__voiceNavigatorContent = true;
+
+  let recognition = null;
+  let isListening = false;
+  let continuousMode = false;
+  let permissionChecked = false;
+
+  function initRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      chrome.runtime.sendMessage({ type: 'VOICE_ERROR', error: 'speech-not-supported' });
+      return false;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = function() {
+      isListening = true;
+      chrome.runtime.sendMessage({ type: 'VOICE_STATUS', status: 'listening' });
+    };
+
+    recognition.onresult = function(event) {
+      const transcript = event.results[event.results.length - 1][0].transcript;
+      chrome.runtime.sendMessage({ type: 'VOICE_STATUS', status: 'processing', transcript });
+      chrome.runtime.sendMessage({ type: 'VOICE_COMMAND', command: transcript });
+    };
+
+    recognition.onerror = function(event) {
+      if (event.error === 'no-speech' && continuousMode) return;
+      if (event.error === 'aborted') return;
+      chrome.runtime.sendMessage({ type: 'VOICE_ERROR', error: event.error });
+    };
+
+    recognition.onend = function() {
+      if (continuousMode && isListening) {
+        setTimeout(function() {
+          if (continuousMode && isListening) {
+            try { recognition.start(); } catch (e) {}
+          }
+        }, 300);
+      } else {
+        isListening = false;
+        chrome.runtime.sendMessage({ type: 'VOICE_STATUS', status: 'stopped' });
+      }
+    };
+
+    return true;
+  }
+
+  async function requestMicPermission() {
+    if (permissionChecked) return true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      chrome.runtime.sendMessage({ type: 'VOICE_ERROR', error: 'audio-capture' });
+      return false;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      permissionChecked = true;
+      return true;
+    } catch (e) {
+      chrome.runtime.sendMessage({ type: 'VOICE_ERROR', error: 'not-allowed' });
+      return false;
+    }
+  }
+
+  async function startListening(continuous) {
+    if (!recognition && !initRecognition()) return;
+    if (isListening) return;
+
+    continuousMode = !!continuous;
+    recognition.continuous = continuousMode;
+
+    const allowed = await requestMicPermission();
+    if (!allowed) return;
+
+    isListening = true;
+    try {
+      recognition.start();
+    } catch (e) {
+      try { recognition.stop(); } catch (err) {}
+      setTimeout(function() {
+        try { recognition.start(); } catch (err) {}
+      }, 100);
+    }
+  }
+
+  function stopListening() {
+    continuousMode = false;
+    isListening = false;
+    if (recognition) {
+      try { recognition.stop(); } catch (e) {}
+    }
+    chrome.runtime.sendMessage({ type: 'VOICE_STATUS', status: 'stopped' });
+  }
+
+  chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+    if (message.type === 'START_LISTENING') {
+      startListening(message.continuous);
+      sendResponse({ success: true });
+    } else if (message.type === 'STOP_LISTENING') {
+      stopListening();
+      sendResponse({ success: true });
+    }
+    return true;
+  });
+
+  initRecognition();
+})();
+// Voice Navigator - Content Script
 // Accessibility-first design for blind and low-vision users
 
 (function() {

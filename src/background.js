@@ -1,8 +1,13 @@
 // Background service worker
-// Handles: OpenAI API processing, TTS output, message coordination
+// Handles: OpenAI API, page actions, and popup status
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
 let conversationHistory = [];
+let listeningState = 'stopped';
+
+function broadcastToPopup(payload) {
+  chrome.runtime.sendMessage(payload).catch(() => {});
+}
 
 async function callOpenAI(userCommand, pageStructure) {
   const systemPrompt = `You are a friendly, conversational voice assistant helping users navigate web pages. You speak naturally like a helpful friend, not a robot.
@@ -223,6 +228,7 @@ async function getPageStructure(tabId) {
 
 // Main message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message?.type) return;
   console.log('Background received:', message.type);
 
   if (message.type === 'VOICE_COMMAND') {
@@ -234,22 +240,89 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
+        broadcastToPopup({
+          type: 'VOICE_STATUS',
+          status: 'processing',
+          transcript: message.command
+        });
+
         const pageStructure = await getPageStructure(tab.id);
         const result = await callOpenAI(message.command, pageStructure);
         
         await executeAction(tab.id, result);
         speak(result.response);
 
-        chrome.runtime.sendMessage({
+        broadcastToPopup({
           type: 'AI_RESPONSE',
           response: result.response
-        }).catch(() => {});
+        });
 
       } catch (error) {
         console.error('Error:', error);
         speak("Sorry, something went wrong. Please try again.");
+        broadcastToPopup({ type: 'VOICE_ERROR', error: 'processing-failed' });
       }
     })();
+    return true;
+  }
+
+  if (message.type === 'VOICE_STATUS') {
+    listeningState = message.status;
+    broadcastToPopup(message);
+    return true;
+  }
+
+  if (message.type === 'VOICE_ERROR') {
+    listeningState = 'stopped';
+    broadcastToPopup(message);
+    return true;
+  }
+
+  if (message.type === 'START_LISTENING') {
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          broadcastToPopup({ type: 'VOICE_ERROR', error: 'no-tab' });
+          sendResponse({ success: false });
+          return;
+        }
+
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'START_LISTENING',
+          continuous: !!message.continuous
+        });
+
+        listeningState = 'listening';
+        sendResponse({ success: true });
+      } catch (err) {
+        console.error('Start listening failed:', err);
+        broadcastToPopup({ type: 'VOICE_ERROR', error: 'page-not-supported' });
+        sendResponse({ success: false });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'STOP_LISTENING') {
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+          await chrome.tabs.sendMessage(tab.id, { type: 'STOP_LISTENING' });
+        }
+      } catch (err) {
+        console.error('Stop listening failed:', err);
+      } finally {
+        listeningState = 'stopped';
+        sendResponse({ success: true });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'GET_LISTENING_STATUS') {
+    sendResponse({ status: listeningState });
     return true;
   }
 
