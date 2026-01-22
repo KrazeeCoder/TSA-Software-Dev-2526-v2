@@ -2,87 +2,57 @@
 // Handles: OpenAI API processing, TTS output, message coordination
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
-let conversationContext = [];
-
-// Consistent response schema for all AI responses
-const RESPONSE_SCHEMA = {
-  type: "object",
-  properties: {
-    action: {
-      type: "string",
-      enum: ["click", "scroll", "fill", "read", "list", "navigate"],
-      description: "The action to perform"
-    },
-    selector: {
-      type: "string",
-      description: "CSS selector for the target element"
-    },
-    index: {
-      type: "number",
-      description: "Index of element if multiple matches"
-    },
-    value: {
-      type: "string",
-      description: "Value for fill actions"
-    },
-    direction: {
-      type: "string",
-      enum: ["up", "down"],
-      description: "Scroll direction"
-    },
-    text: {
-      type: "string",
-      description: "Text content to read aloud"
-    },
-    response: {
-      type: "string",
-      description: "Human-friendly response to speak to the user"
-    }
-  },
-  required: ["action", "response"]
-};
+let conversationHistory = [];
 
 async function callOpenAI(userCommand, pageStructure) {
-  const systemPrompt = `You are an AI assistant helping visually impaired users navigate web pages using voice commands.
+  const systemPrompt = `You are a friendly, conversational voice assistant helping users navigate web pages. You speak naturally like a helpful friend, not a robot.
 
-Your job is to:
-1. Understand what the user wants to do
-2. Analyze the page structure to find the right elements
-3. Return a structured action response
+Your personality:
+- Warm and encouraging
+- Concise but friendly
+- You celebrate when you help successfully
+- You apologize genuinely if you can't help
 
-Available actions:
-- "click": Click on a link, button, or interactive element
-- "scroll": Scroll the page up or down
-- "fill": Fill in a form field
-- "read": Read content aloud to the user
-- "list": List available elements (links, buttons, headings)
-- "navigate": Go to a URL, go back, or go forward
+When responding, always return valid JSON with these fields:
+{
+  "action": "click" | "scroll" | "fill" | "read" | "list" | "navigate" | "none",
+  "selector": "CSS selector if clicking/filling",
+  "index": number (if multiple elements match),
+  "value": "text to type or URL to go to",
+  "direction": "up" | "down" (for scrolling),
+  "response": "What you'll say out loud to the user - make this conversational!"
+}
 
-Always provide helpful, concise responses. If you can't find what the user is looking for, explain what you found instead.`;
+Examples of good conversational responses:
+- "Sure thing! I'll click that link for you."
+- "Scrolling down so you can see more of the page."
+- "I found 5 links on this page. The first one is About Us, then Contact..."
+- "Hmm, I couldn't find a search button, but I did see a menu icon you might want to try."
+- "Great question! This page is about..."`;
 
-  const userPrompt = `Page Information:
-Title: ${pageStructure.title}
+  const userPrompt = `Current page: "${pageStructure.title}"
 URL: ${pageStructure.url}
 
-Page Content Summary:
-${pageStructure.bodyText?.slice(0, 3000) || 'No content available'}
+What's on this page:
+${pageStructure.headings?.length > 0 ? `Headings: ${pageStructure.headings.slice(0, 10).map(h => h.text).join(', ')}` : 'No headings found'}
+${pageStructure.links?.length > 0 ? `Links (first 15): ${pageStructure.links.slice(0, 15).map((l, i) => `${i + 1}. "${l.text}"`).join(', ')}` : 'No links found'}
+${pageStructure.buttons?.length > 0 ? `Buttons: ${pageStructure.buttons.slice(0, 10).map(b => b.text).join(', ')}` : 'No buttons found'}
 
-Available Elements:
-- Headings: ${JSON.stringify(pageStructure.headings?.slice(0, 20) || [])}
-- Links: ${JSON.stringify(pageStructure.links?.slice(0, 30) || [])}
-- Buttons: ${JSON.stringify(pageStructure.buttons?.slice(0, 20) || [])}
+Page content preview:
+${pageStructure.bodyText?.slice(0, 2000) || 'No content available'}
 
-Previous context: ${conversationContext.slice(-3).join(' | ')}
+User says: "${userCommand}"
 
-User command: "${userCommand}"
-
-Respond with a JSON object matching the required schema.`;
+Remember: Respond with valid JSON only. Make the "response" field sound natural and friendly!`;
 
   try {
-    console.log('Making OpenAI API call...');
+    console.log('Calling OpenAI...');
     
     if (!OPENAI_API_KEY) {
-      throw new Error('OpenAI API key not configured. Add VITE_OPENAI_API_KEY to your .env file.');
+      return {
+        action: 'none',
+        response: "Oops! I don't have an API key configured yet. Please add your OpenAI key to the .env file."
+      };
     }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -95,62 +65,55 @@ Respond with a JSON object matching the required schema.`;
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
+          ...conversationHistory.slice(-4),
           { role: 'user', content: userPrompt }
         ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'navigation_action',
-            strict: true,
-            schema: RESPONSE_SCHEMA
-          }
-        },
+        response_format: { type: 'json_object' },
         max_tokens: 500,
-        temperature: 0.3
+        temperature: 0.7
       })
     });
 
-    console.log('OpenAI response status:', response.status);
-
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error('OpenAI API error response:', errorData);
-      throw new Error(`API Error: ${response.status} - ${errorData}`);
+      const errorText = await response.text();
+      console.error('OpenAI error:', errorText);
+      throw new Error(`API returned ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('OpenAI response data:', data);
+    const aiText = data.choices[0]?.message?.content || '';
+    
+    console.log('AI response:', aiText);
 
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error('Invalid API response format');
+    // Save to conversation history
+    conversationHistory.push({ role: 'user', content: userCommand });
+    conversationHistory.push({ role: 'assistant', content: aiText });
+    
+    // Keep history manageable
+    if (conversationHistory.length > 10) {
+      conversationHistory = conversationHistory.slice(-6);
     }
 
-    const aiResponse = data.choices[0].message.content;
-    console.log('AI response:', aiResponse);
-
     try {
-      return JSON.parse(aiResponse);
-    } catch (parseError) {
-      console.log('Failed to parse JSON, using as text response');
+      return JSON.parse(aiText);
+    } catch {
+      // If JSON parsing fails, treat as conversational response
       return {
-        action: 'read',
-        text: aiResponse,
-        response: aiResponse
+        action: 'none',
+        response: aiText.replace(/[{}"]/g, '').trim() || "I'm not sure how to help with that."
       };
     }
   } catch (error) {
-    console.error('OpenAI API error:', error);
-    
+    console.error('OpenAI error:', error);
     return {
-      action: 'read',
-      text: `Sorry, I encountered an error: ${error.message}`,
-      response: `Sorry, I encountered an error: ${error.message}`
+      action: 'none',
+      response: "Sorry, I ran into a problem connecting to my brain. Can you try again?"
     };
   }
 }
 
-// Speak text using Chrome TTS
 function speak(text) {
+  if (!text) return;
   chrome.tts.speak(text, {
     rate: 1.0,
     pitch: 1.0,
@@ -158,186 +121,141 @@ function speak(text) {
   });
 }
 
-// Execute action on the page
 async function executeAction(tabId, action) {
-  if (action.action === 'read' || action.action === 'list') {
-    return; // No DOM action needed, just speak
+  if (!action.action || action.action === 'none' || action.action === 'read' || action.action === 'list') {
+    return;
   }
 
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    function: (actionData) => {
-      switch (actionData.action) {
-        case 'click':
-          if (actionData.selector) {
-            const elements = document.querySelectorAll(actionData.selector);
-            const element = elements[actionData.index || 0];
-            if (element) {
-              element.click();
-              return { success: true };
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      function: (actionData) => {
+        switch (actionData.action) {
+          case 'click':
+            if (actionData.selector) {
+              const elements = document.querySelectorAll(actionData.selector);
+              const el = elements[actionData.index || 0];
+              if (el) {
+                el.click();
+                return true;
+              }
             }
-          }
-          break;
-
-        case 'scroll':
-          if (actionData.selector) {
-            const element = document.querySelector(actionData.selector);
-            if (element) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Try clicking by link text
+            if (actionData.value) {
+              const links = document.querySelectorAll('a, button');
+              for (const link of links) {
+                if (link.textContent.toLowerCase().includes(actionData.value.toLowerCase())) {
+                  link.click();
+                  return true;
+                }
+              }
             }
-          } else if (actionData.direction === 'down') {
-            window.scrollBy({ top: window.innerHeight * 0.8, behavior: 'smooth' });
-          } else if (actionData.direction === 'up') {
-            window.scrollBy({ top: -window.innerHeight * 0.8, behavior: 'smooth' });
-          }
-          break;
+            break;
 
-        case 'fill':
-          if (actionData.selector && actionData.value) {
-            const element = document.querySelector(actionData.selector);
-            if (element) {
-              element.value = actionData.value;
-              element.dispatchEvent(new Event('input', { bubbles: true }));
-              element.dispatchEvent(new Event('change', { bubbles: true }));
+          case 'scroll':
+            if (actionData.direction === 'down') {
+              window.scrollBy({ top: window.innerHeight * 0.75, behavior: 'smooth' });
+            } else if (actionData.direction === 'up') {
+              window.scrollBy({ top: -window.innerHeight * 0.75, behavior: 'smooth' });
             }
-          }
-          break;
+            break;
 
-        case 'navigate':
-          if (actionData.value === 'back') {
-            window.history.back();
-          } else if (actionData.value === 'forward') {
-            window.history.forward();
-          } else if (actionData.value) {
-            window.location.href = actionData.value;
-          }
-          break;
-      }
-    },
-    args: [action]
-  });
+          case 'fill':
+            if (actionData.selector && actionData.value) {
+              const el = document.querySelector(actionData.selector);
+              if (el) {
+                el.value = actionData.value;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }
+            break;
+
+          case 'navigate':
+            if (actionData.value === 'back') {
+              window.history.back();
+            } else if (actionData.value === 'forward') {
+              window.history.forward();
+            } else if (actionData.value) {
+              window.location.href = actionData.value;
+            }
+            break;
+        }
+      },
+      args: [action]
+    });
+  } catch (err) {
+    console.error('Execute action error:', err);
+  }
 }
 
-// Extract page structure from tab
 async function getPageStructure(tabId) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    function: () => {
-      const structure = {
-        title: document.title,
-        url: window.location.href,
-        headings: [],
-        links: [],
-        buttons: [],
-        forms: [],
-        bodyText: document.body.innerText?.slice(0, 5000) || ''
-      };
-
-      // Extract headings
-      document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading, index) => {
-        structure.headings.push({
-          index,
-          level: parseInt(heading.tagName.charAt(1)),
-          text: heading.textContent.trim().slice(0, 100),
-          id: heading.id || null
-        });
-      });
-
-      // Extract links
-      document.querySelectorAll('a[href]').forEach((link, index) => {
-        const text = link.textContent.trim();
-        if (text && text.length > 0) {
-          structure.links.push({
-            index,
-            text: text.slice(0, 80),
-            href: link.href,
-            id: link.id || null
-          });
-        }
-      });
-
-      // Extract buttons
-      document.querySelectorAll('button, input[type="button"], input[type="submit"], [role="button"]').forEach((button, index) => {
-        structure.buttons.push({
-          index,
-          text: (button.textContent.trim() || button.value || button.getAttribute('aria-label') || '').slice(0, 80),
-          type: button.type || 'button',
-          id: button.id || null
-        });
-      });
-
-      return structure;
-    }
-  });
-
-  return results[0]?.result || { title: '', url: '', headings: [], links: [], buttons: [], bodyText: '' };
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      function: () => {
+        return {
+          title: document.title,
+          url: window.location.href,
+          headings: [...document.querySelectorAll('h1,h2,h3,h4')].slice(0, 20).map((h, i) => ({
+            index: i,
+            level: parseInt(h.tagName[1]),
+            text: h.textContent.trim().slice(0, 100)
+          })),
+          links: [...document.querySelectorAll('a[href]')].filter(a => a.textContent.trim()).slice(0, 30).map((a, i) => ({
+            index: i,
+            text: a.textContent.trim().slice(0, 60),
+            href: a.href
+          })),
+          buttons: [...document.querySelectorAll('button, [role="button"], input[type="submit"]')].slice(0, 15).map((b, i) => ({
+            index: i,
+            text: (b.textContent.trim() || b.value || b.getAttribute('aria-label') || '').slice(0, 50)
+          })),
+          bodyText: document.body.innerText?.slice(0, 4000) || ''
+        };
+      }
+    });
+    return results[0]?.result || {};
+  } catch {
+    return { title: '', url: '', headings: [], links: [], buttons: [], bodyText: '' };
+  }
 }
 
 // Main message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('Background received message:', message.type);
+  console.log('Background received:', message.type);
 
   if (message.type === 'VOICE_COMMAND') {
-    console.log('Processing voice command:', message.command);
-    conversationContext.push(message.command);
-
-    // Keep context limited
-    if (conversationContext.length > 10) {
-      conversationContext = conversationContext.slice(-5);
-    }
-
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    (async () => {
       try {
-        if (!tabs[0]) {
-          throw new Error('No active tab found');
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab) {
+          speak("I can't see which page you're on.");
+          return;
         }
 
-        const tabId = tabs[0].id;
-        console.log('Getting page structure...');
-        
-        const pageStructure = await getPageStructure(tabId);
-        console.log('Page structure extracted');
-
+        const pageStructure = await getPageStructure(tab.id);
         const result = await callOpenAI(message.command, pageStructure);
-        console.log('AI result:', result);
-
-        // Execute action if needed
-        await executeAction(tabId, result);
-
-        // Speak response
-        console.log('Speaking response:', result.response);
+        
+        await executeAction(tab.id, result);
         speak(result.response);
 
-        // Send response to popup/content script
         chrome.runtime.sendMessage({
           type: 'AI_RESPONSE',
-          response: result.response,
-          action: result.action
-        });
+          response: result.response
+        }).catch(() => {});
 
       } catch (error) {
-        console.error('Error processing command:', error);
-        speak('Sorry, I encountered an error processing your request.');
-        
-        chrome.runtime.sendMessage({
-          type: 'AI_RESPONSE',
-          response: `Error: ${error.message}`,
-          action: 'error'
-        });
+        console.error('Error:', error);
+        speak("Sorry, something went wrong. Please try again.");
       }
-    });
-
-    return true; // Keep message channel open for async response
+    })();
+    return true;
   }
 
   if (message.type === 'SPEAK') {
     speak(message.text);
   }
-
-  if (message.type === 'GET_API_STATUS') {
-    sendResponse({ hasKey: !!OPENAI_API_KEY });
-    return true;
-  }
 });
 
-console.log('Background script loaded, API key configured:', !!OPENAI_API_KEY);
+console.log('Background loaded. API key:', OPENAI_API_KEY ? 'configured' : 'missing');

@@ -2,29 +2,50 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Voice Navigator</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1>Voice Navigator</h1>
-  <button id="listen">Start Listening</button>
-  <div id="status">Click to speak a command</div>
-  
-  <h2>Type Command</h2>
-  <div class="input-section">
-    <input type="text" id="command-input" placeholder="Type your command here...">
-    <button id="send-command">Send</button>
-  </div>
-  
-  <div class="panel-section">
-    <button id="inject-panel">Add Panel to Page</button>
-  </div>
-  
-  <h2>AI Response</h2>
-  <div id="ai-response" class="ai-response-panel">
-    <div id="ai-text">AI responses will appear here...</div>
-  </div>
-  
-  <script type="module" src="popup.js"></script>
+  <main role="main">
+    <h1>Voice Navigator</h1>
+    
+    <p id="status" role="status" aria-live="polite">
+      Ready to assist
+    </p>
+
+    <div class="actions">
+      <button id="listen-btn" aria-label="Start voice input">
+        🎤 Start Listening
+      </button>
+    </div>
+
+    <div class="text-input">
+      <label for="command-input" class="sr-only">Type a command</label>
+      <input 
+        type="text" 
+        id="command-input" 
+        placeholder="Or type a command..."
+        aria-describedby="input-hint"
+      >
+      <button id="send-btn" aria-label="Send command">
+        Send
+      </button>
+    </div>
+    <p id="input-hint" class="hint">Press Enter to send</p>
+
+    <div id="response-area" role="region" aria-label="AI Response">
+      <h2>Response</h2>
+      <div id="response" aria-live="polite">
+        The assistant will respond here.
+      </div>
+    </div>
+
+    <p class="shortcut">
+      Keyboard shortcut: <kbd>Alt+V</kbd> on any page
+    </p>
+  </main>
+
+  <script src="popup.js" type="module"></script>
 </body>
 </html>

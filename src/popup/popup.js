@@ -1,202 +1,126 @@
-document.addEventListener('DOMContentLoaded', () => {
-  const listenBtn = document.getElementById('listen');
-  const status = document.getElementById('status');
-  const aiText = document.getElementById('ai-text');
+// Voice Navigator Popup Script
+
+(function() {
+  'use strict';
+
+  const listenBtn = document.getElementById('listen-btn');
+  const statusEl = document.getElementById('status');
+  const responseEl = document.getElementById('response');
   const commandInput = document.getElementById('command-input');
-  const sendCommandBtn = document.getElementById('send-command');
+  const sendBtn = document.getElementById('send-btn');
+
   let isListening = false;
 
-  // Prevent popup from closing when clicking outside
-  document.addEventListener('click', (e) => {
-    e.stopPropagation();
-  });
-
-  // Keep popup focused
-  commandInput.focus();
-  
-  // Prevent popup from losing focus
-  window.addEventListener('blur', () => {
-    setTimeout(() => {
-      window.focus();
-      commandInput.focus();
-    }, 100);
-  });
-
-  // Load saved data on startup
-  function loadSavedData() {
-    chrome.storage.local.get(['lastCommand', 'lastResponse', 'commandHistory'], (result) => {
-      if (result.lastResponse) {
-        aiText.textContent = result.lastResponse;
-      }
-      if (result.lastCommand) {
-        commandInput.value = result.lastCommand;
-        commandInput.focus();
-      }
-    });
-  }
-
-  // Save data to storage
-  function saveResponse(response) {
-    chrome.storage.local.set({ lastResponse: response });
-  }
-
-  function saveCommand(command) {
-    chrome.storage.local.set({ lastCommand: command });
-  }
-
-  // Load saved data when popup opens
-  loadSavedData();
-
-  // Fallback: ensure panel is created when popup opens
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]) {
-      chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
-        function: () => {
-          // This will trigger the content script to create the panel
-          if (typeof createPersistentPanel === 'function') {
-            createPersistentPanel();
-          }
-        }
-      });
+  // Load saved response on open
+  chrome.storage.local.get(['lastResponse'], function(result) {
+    if (result.lastResponse) {
+      responseEl.textContent = result.lastResponse;
     }
   });
 
-  async function ensureContentScript(tabId) {
-    try {
-      await chrome.tabs.sendMessage(tabId, { type: 'PING' });
-      return true;
-    } catch {
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          files: ['assets/content.js-CbLx4GXE.js']
-        });
-        return true;
-      } catch (error) {
-        console.error('Failed to inject content script:', error);
-        return false;
-      }
+  function setStatus(text) {
+    statusEl.textContent = text;
+  }
+
+  function setResponse(text) {
+    responseEl.textContent = text;
+    chrome.storage.local.set({ lastResponse: text });
+  }
+
+  function updateListenButton(listening) {
+    isListening = listening;
+    if (listening) {
+      listenBtn.textContent = '⏹ Stop Listening';
+      listenBtn.classList.add('listening');
+      listenBtn.setAttribute('aria-label', 'Stop listening');
+    } else {
+      listenBtn.textContent = '🎤 Start Listening';
+      listenBtn.classList.remove('listening');
+      listenBtn.setAttribute('aria-label', 'Start voice input');
     }
   }
 
   function sendCommand(command) {
-    saveCommand(command);
-    status.textContent = `Sending: "${command}"`;
+    if (!command.trim()) return;
     
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.runtime.sendMessage({
-          type: 'VOICE_COMMAND',
-          command: command
-        });
-      }
+    setStatus('Processing...');
+    chrome.runtime.sendMessage({
+      type: 'VOICE_COMMAND',
+      command: command.trim()
     });
   }
 
-  // Text input event listeners
-  sendCommandBtn.addEventListener('click', () => {
-    const command = commandInput.value.trim();
-    if (command) {
-      sendCommand(command);
+  // Start/stop listening via content script
+  async function toggleListening() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!tab) {
+      setStatus('No active tab found');
+      return;
+    }
+
+    // Check if we can access the tab
+    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
+      setStatus('Cannot run on browser pages');
+      return;
+    }
+
+    try {
+      if (isListening) {
+        await chrome.tabs.sendMessage(tab.id, { type: 'STOP_LISTENING' });
+        updateListenButton(false);
+        setStatus('Ready to assist');
+      } else {
+        // Inject content script if needed and start listening
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            if (window.__voiceNavigatorInitialized && window.toggleListening) {
+              window.toggleListening();
+            }
+          }
+        });
+        updateListenButton(true);
+        setStatus('Listening...');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setStatus('Error: ' + err.message);
+      updateListenButton(false);
+    }
+  }
+
+  // Event listeners
+  listenBtn.addEventListener('click', toggleListening);
+
+  sendBtn.addEventListener('click', function() {
+    sendCommand(commandInput.value);
+    commandInput.value = '';
+  });
+
+  commandInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      sendCommand(commandInput.value);
       commandInput.value = '';
     }
   });
 
-  commandInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      const command = commandInput.value.trim();
-      if (command) {
-        sendCommand(command);
-        commandInput.value = '';
-      }
-    }
-  });
-
-  // Save input as user types
-  commandInput.addEventListener('input', (e) => {
-    saveCommand(e.target.value);
-  });
-
-  // Panel injection button
-  document.getElementById('inject-panel').addEventListener('click', () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.scripting.executeScript({
-          target: { tabId: tabs[0].id },
-          files: ['assets/content.js-cFtuki2b.js']
-        }).then(() => {
-          // Wait a bit then try to create panel
-          setTimeout(() => {
-            chrome.scripting.executeScript({
-              target: { tabId: tabs[0].id },
-              function: () => {
-                if (typeof createPersistentPanel === 'function') {
-                  createPersistentPanel();
-                }
-              }
-            });
-          }, 100);
-        });
-      }
-    });
-  });
-
-  listenBtn.addEventListener('click', async () => {
-    if (isListening) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]) {
-          chrome.tabs.sendMessage(tabs[0].id, { type: 'STOP_LISTENING' });
-        }
-      });
-      isListening = false;
-      listenBtn.textContent = 'Start Listening';
-      status.textContent = 'Click to speak a command';
-    } else {
-      chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-        if (!tabs[0]) {
-          status.textContent = 'No active tab found';
-          return;
-        }
-        
-        const tabId = tabs[0].id;
-        const scriptReady = await ensureContentScript(tabId);
-        
-        if (!scriptReady) {
-          status.textContent = 'Cannot load content script on this page';
-          return;
-        }
-        
-        chrome.tabs.sendMessage(tabId, { type: 'START_LISTENING' }, (response) => {
-          if (chrome.runtime.lastError) {
-            status.textContent = `Error: ${chrome.runtime.lastError.message}`;
-            return;
-          }
-          
-          if (response && response.success) {
-            isListening = true;
-            listenBtn.textContent = 'Stop Listening';
-            status.textContent = 'Listening...';
-          } else {
-            status.textContent = response ? response.error : 'Failed to start listening';
-          }
-        });
-      });
-    }
-  });
-
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === 'VOICE_RESULT') {
-      status.textContent = `You said: "${message.transcript}"`;
-      isListening = false;
-      listenBtn.textContent = 'Start Listening';
+  // Listen for messages from background
+  chrome.runtime.onMessage.addListener(function(message) {
+    if (message.type === 'AI_RESPONSE') {
+      setResponse(message.response);
+      setStatus('Ready to assist');
+      updateListenButton(false);
+    } else if (message.type === 'VOICE_RESULT') {
+      setStatus('You said: "' + message.transcript + '"');
+      updateListenButton(false);
     } else if (message.type === 'VOICE_ERROR') {
-      status.textContent = `Error: ${message.error}`;
-      isListening = false;
-      listenBtn.textContent = 'Start Listening';
-    } else if (message.type === 'AI_RESPONSE') {
-      aiText.textContent = message.response;
-      saveResponse(message.response);
+      setStatus('Error: ' + message.error);
+      updateListenButton(false);
     }
   });
-});
+
+  // Focus input on open
+  commandInput.focus();
+
+})();
